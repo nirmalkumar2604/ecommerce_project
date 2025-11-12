@@ -1,28 +1,293 @@
 {% extends "e-com/base.html" %}
-{% block title %}Products | NK Mart{% endblock %}
+{% block title %}Products - NK Mart{% endblock %}
 
 {% block content %}
-<div class="product-container">
-  <h2 class="section-title">🛍️ Available Products</h2>
+<style>
+  .product-page {
+    margin: 40px auto;
+    max-width: 1200px;
+  }
 
-  {% if products %}
-  <div class="product-grid">
-    {% for p in products %}
-    <div class="product-card">
-      <img src="${p.image || 'https://via.placeholder.com/200'}" alt="${p.name}" />
-      <div class="product-info">
-        <h3>{{ p.name }}</h3>
-        <p class="description">{{ p.description }}</p>
-        <p class="category">Category: {{ p.category }}</p>
-        <p class="stock">Stock: {{ p.stock }}</p>
-        <p class="price">₹{{ p.price }}</p>
-        <button>Add to Cart</button>
-      </div>
-    </div>
-    {% endfor %}
+  .hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--glass, rgba(255,255,255,0.08));
+    border-radius: 16px;
+    padding: 30px 40px;
+    margin-bottom: 40px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+  }
+
+  .hero-left h1 {
+    font-size: 36px;
+    color: var(--highlight, #ffeb3b);
+    margin-bottom: 8px;
+  }
+
+  .hero-left p {
+    font-size: 16px;
+    color: var(--text-color);
+    opacity: 0.8;
+  }
+
+  .hero img {
+    width: 300px;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+  }
+
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 24px;
+  }
+
+  .product-card {
+    background: var(--glass, rgba(255,255,255,0.08));
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .product-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.25);
+  }
+
+  .product-card img {
+    width: 100%;
+    height: 220px;
+    object-fit: cover;
+  }
+
+  .product-card-content {
+    padding: 16px;
+    text-align: center;
+  }
+
+  .product-card h3 {
+    font-size: 18px;
+    margin-bottom: 6px;
+    color: var(--text-color);
+  }
+
+  .product-card p {
+    font-size: 14px;
+    color: var(--text-color);
+    opacity: 0.8;
+  }
+
+  .price {
+    font-weight: 700;
+    font-size: 17px;
+    margin-top: 8px;
+    color: var(--highlight, #ffeb3b);
+  }
+
+  .add-btn {
+    margin-top: 12px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    background: linear-gradient(90deg, var(--accent-blue, #0078ff), var(--accent-blue-2, #00c2ff));
+    color: #fff;
+    transition: 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .add-btn:hover {
+    transform: translateY(-3px);
+    background: linear-gradient(90deg, #00bfff, #0077ff);
+  }
+
+  .add-btn.loading {
+    background: #6c757d;
+    cursor: not-allowed;
+  }
+
+  .add-btn.loading::after {
+    content: "";
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    top: 50%;
+    left: 50%;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s ease-in-out infinite;
+  }
+
+  .add-btn.success {
+    background: linear-gradient(90deg, #28a745, #20c997);
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .redirect-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    transform: translateX(150%);
+    transition: transform 0.3s ease;
+  }
+
+  .redirect-notification.show {
+    transform: translateX(0);
+  }
+
+  @media (max-width: 768px) {
+    .hero {
+      flex-direction: column;
+      text-align: center;
+    }
+    .hero img {
+      width: 100%;
+      margin-top: 20px;
+    }
+  }
+</style>
+
+<div class="product-page">
+  <!-- Redirect Notification -->
+  <div class="redirect-notification" id="redirectNotification">
+    🎉 Product added! Redirecting to cart...
   </div>
-  {% else %}
-  <p class="no-products">No products available right now.</p>
-  {% endif %}
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-left">
+      <h1>Top Picks for You</h1>
+      <p>Explore the latest and greatest products at unbeatable prices.</p>
+    </div>
+    <img src="https://cdn.pixabay.com/photo/2017/01/06/19/15/headphones-1953865_1280.jpg" alt="Hero Image">
+  </section>
+
+  <!-- Product Grid -->
+  <section class="product-grid">
+    {% for product in products %}
+      <div class="product-card">
+        {% if product.image %}
+          <img src="{{ product.image }}" alt="{{ product.name }}">
+        {% else %}
+          <img src="https://via.placeholder.com/400x250?text=Product" alt="Placeholder">
+        {% endif %}
+        <div class="product-card-content">
+          <h3>{{ product.name }}</h3>
+          <p class="price">₹{{ product.price }}</p>
+          <p>{{ product.description|truncatechars:80 }}</p>
+          <button class="add-btn" data-product-id="{{ product.id }}" data-product-name="{{ product.name }}">
+            Add to Cart 🛒
+          </button>
+        </div>
+      </div>
+    {% empty %}
+      <p style="grid-column: 1/-1; text-align: center; color: var(--text-color); opacity: 0.7;">No products found.</p>
+    {% endfor %}
+  </section>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const buttons = document.querySelectorAll(".add-btn");
+  const redirectNotification = document.getElementById("redirectNotification");
+
+  function showRedirectNotification(productName) {
+    redirectNotification.innerHTML = `🎉 ${productName} added to cart! Redirecting...`;
+    redirectNotification.classList.add('show');
+  }
+
+  function redirectToCart() {
+    setTimeout(() => {
+      window.location.href = "/ui/cart/";
+    }, 1500);
+  }
+
+  buttons.forEach(button => {
+    button.addEventListener("click", async () => {
+      const productId = button.getAttribute("data-product-id");
+      const productName = button.getAttribute("data-product-name");
+      const originalText = button.innerHTML;
+      console.log("Adding product ID:", productId);
+
+      
+      button.classList.add('loading');
+      button.innerHTML = '';
+      button.disabled = true;
+
+      try {
+        
+        // ✅ Corrected endpoint — now points to /api/add_to_cart/
+        const response = await fetch("/api/add_to_cart/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCookie("csrftoken"),
+          },
+          credentials: "include",
+          body: JSON.stringify({ product_id: productId }),
+        });
+
+        const data = await response.json();
+        console.log("Add to cart response:", data);
+
+        if (!response.ok) {
+          throw new Error(data.error || "Something went wrong.");
+        }
+
+        // Success animation
+        button.classList.remove('loading');
+        button.classList.add('success');
+        button.innerHTML = '✅ Added!';
+
+        showRedirectNotification(productName);
+        redirectToCart();
+
+      } catch (error) {
+        console.error("Error adding to cart:", error);
+        button.classList.remove('loading');
+        button.innerHTML = '❌ Failed';
+        button.style.background = '#dc3545';
+        setTimeout(() => {
+          button.innerHTML = originalText;
+          button.style.background = '';
+          button.disabled = false;
+        }, 2000);
+      }
+    });
+  });
+});
+
+// Helper for CSRF token
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let cookie of cookies) {
+      cookie = cookie.trim();
+      if (cookie.startsWith(name + "=")) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+</script>
+
 {% endblock %}

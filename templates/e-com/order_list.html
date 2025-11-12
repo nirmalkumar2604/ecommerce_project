@@ -1,0 +1,155 @@
+{% extends "e-com/base.html" %}
+{% block title %}My Orders | NK Mart{% endblock %}
+
+{% block content %}
+<div class="orders-container">
+  <h2 class="section-title">📦 My Orders</h2>
+
+  <div id="ordersList" class="orders-list"></div>
+</div>
+
+<script>
+async function loadOrders() {
+  const email = localStorage.getItem("userEmail");
+  if (!email) {
+    alert("⚠️ Please log in to view your orders.");
+    window.location.href = "/ui/login/";
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/order_list/?email=${email}`);
+    const data = await res.json();
+
+    const ordersDiv = document.getElementById("ordersList");
+    ordersDiv.innerHTML = "";
+
+    if (!res.ok || !data.orders || data.orders.length === 0) {
+      ordersDiv.innerHTML = `<p class="empty">You have no past orders.</p>`;
+      return;
+    }
+
+    data.orders.forEach(order => {
+      ordersDiv.innerHTML += `
+        <div class="order-card">
+          <div class="order-header">
+            <h3>🧾 Order #${order.order_id}</h3>
+            <span class="status ${order.status.toLowerCase()}">${order.status}</span>
+          </div>
+          <p><strong>Total:</strong> ₹${order.total_amount.toFixed(2)}</p>
+          <p><strong>Placed On:</strong> ${new Date(order.created_at).toLocaleString()}</p>
+          <button onclick="viewOrderDetail(${order.order_id})">View Details</button>
+        </div>
+      `;
+    });
+  } catch (error) {
+    console.error(error);
+    alert("🚨 Failed to load orders.");
+  }
+}
+
+async function viewOrderDetail(orderId) {
+  try {
+    const res = await fetch(`/api/order_detail/${orderId}/`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert("❌ " + (data.error || "Failed to load order details."));
+      return;
+    }
+
+    const o = data.order;
+    let itemsHTML = "";
+    o.items.forEach(i => {
+      itemsHTML += `<li>${i.product_name} × ${i.quantity} — ₹${i.subtotal.toFixed(2)}</li>`;
+    });
+
+    const addr = o.shipping_address
+      ? `${o.shipping_address.street}, ${o.shipping_address.city}, ${o.shipping_address.state}, ${o.shipping_address.zip_code}`
+      : "No shipping address";
+
+    alert(`
+Order ID: ${o.order_id}
+User: ${o.user}
+Total: ₹${o.total_amount}
+Status: ${o.status}
+Placed: ${new Date(o.created_at).toLocaleString()}
+
+Items:
+${itemsHTML}
+
+Shipping:
+${addr}
+    `);
+  } catch (error) {
+    console.error(error);
+    alert("🚨 Failed to fetch order details.");
+  }
+}
+
+loadOrders();
+</script>
+
+<style>
+.orders-container {
+  width: 90%;
+  margin: 30px auto;
+  text-align: center;
+}
+.orders-list {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.order-card {
+  background: #0b132b;
+  color: white;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: left;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+  transition: 0.3s ease;
+}
+.order-card:hover {
+  transform: scale(1.03);
+}
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.status {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.status.paid {
+  background: #28a745;
+}
+.status.pending {
+  background: #ffc107;
+  color: #000;
+}
+.status.cancelled {
+  background: #dc3545;
+}
+button {
+  margin-top: 10px;
+  background: #007bff;
+  border: none;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+button:hover {
+  background: #0056b3;
+}
+.empty {
+  color: #ccc;
+  margin-top: 20px;
+  font-style: italic;
+}
+</style>
+{% endblock %}

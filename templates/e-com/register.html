@@ -1,24 +1,20 @@
-{% extends "e-com/base.html" %}
+{% extends "e-com/auth_base.html" %}
 {% block title %}Register | NK Mart{% endblock %}
-
 {% block content %}
-<div class="login-container">
-  <div class="login-card">
-    <h2 class="login-title">Create Your Account 🛍️</h2>
-    <p class="login-subtitle">Join NK Mart and start shopping today!</p>
-
-    <form id="registerForm" class="login-form">
-      <input type="text" id="username" placeholder="Choose a username" required />
-      <input type="email" id="email" placeholder="Enter your email" required />
-      <input type="password" id="password" placeholder="Enter password" required />
-      <input type="password" id="password2" placeholder="Confirm password" required />
-      <button type="submit">Register</button>
-    </form>
-
-    <div class="login-links">
-      <a href="/ui/login/">Already have an account? Login</a>
-    </div>
-  </div>
+<div class="auth-main">
+  <h2>Create an Account ✨</h2>
+  <p class="muted">Join NK Mart to explore the best products!</p>
+  <form class="auth-form" method="post" action="/api/register/">
+    {% csrf_token %}
+    <input type="text" name="username" placeholder="Full Name" class="input" required />
+    <input type="email" name="email" placeholder="Email" class="input" required />
+    <input type="password" name="password" placeholder="Password" class="input" required />
+    <input type="password" name="password2" placeholder="Confirm Password" class="input" required />
+    <button type="submit" class="btn-primary">Register</button>
+  </form>
+  <p class="muted" style="margin-top:10px;">
+    Already have an account? <a href="/ui/login/">Login</a>
+  </p>
 </div>
 
 <script>

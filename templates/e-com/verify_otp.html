@@ -1,25 +1,20 @@
-{% extends "e-com/base.html" %}
+{% extends "e-com/auth_base.html" %}
 {% block title %}Verify OTP | NK Mart{% endblock %}
-
 {% block content %}
-<div class="login-container">
-  <div class="login-card">
-    <h2 class="login-title">Verify OTP 🔑</h2>
-    <p class="login-subtitle">
-      Enter the 6-digit OTP sent to your registered email address.
-    </p>
-
-    <form id="otpForm" class="login-form">
-      <input type="email" id="email" placeholder="Enter your email" required />
-      <input type="text" id="otp" placeholder="Enter 6-digit OTP" maxlength="6" required />
-      <button type="submit">Verify OTP</button>
-    </form>
-
-    <div class="login-links">
-      <a href="/ui/forget_password/">Resend OTP</a>
-    </div>
-  </div>
+<div class="auth-main">
+  <h2>Verify OTP 🔐</h2>
+  <p class="muted">Enter the 6-digit OTP sent to your email</p>
+  <form class="auth-form" method="post" action="/api/verify_otp/">
+    {% csrf_token %}
+    <input type="email" name="email" placeholder="Email" class="input" required />
+    <input type="text" name="otp" placeholder="Enter OTP" maxlength="6" class="input" required />
+    <button type="submit" class="btn-primary">Verify</button>
+  </form>
+  <p class="muted" style="margin-top:10px;">
+    Didn’t get OTP? <a href="/ui/forget_password/">Resend</a>
+  </p>
 </div>
+
 
 <script>
 document.getElementById("otpForm").addEventListener("submit", async function (e) {

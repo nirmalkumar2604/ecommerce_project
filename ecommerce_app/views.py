@@ -12,6 +12,28 @@ from django.views.generic import TemplateView
 from datetime import datetime
 from django.shortcuts import render
 from django.views import View
+from .serializers import AddToCartSerializer
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth import authenticate, login as auth_login,logout
+from django.contrib.auth.models import User
+from .models import Product, Cart
+from django.http import HttpResponseRedirect
+from django.shortcuts import redirect
+from django.contrib.auth import logout
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+import json
+from django.http import JsonResponse
+from django.db import IntegrityError
+
+
+
 
 
 def year_context(request):
@@ -19,8 +41,19 @@ def year_context(request):
 
 
 from .models import (
-    Product, Cart, Order, OrderItem, Address, Notification, PasswordResetOTP
+    Product, Cart, Order, OrderItem,Wishlist, Address, Notification, PasswordResetOTP
 )
+
+from django.views.generic import TemplateView
+from .models import Product
+
+class HomeView(TemplateView):
+    template_name = "e-com/home.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["featured_products"] = Product.objects.all()[:4]
+        return context
 
 # ─────────────────────────────
 # Auth
@@ -49,23 +82,51 @@ class RegisterView(APIView):
         user = User.objects.create_user(username=username, email=email, password=password)
         return Response({"message": "User registered successfully!", "user_id": user.id}, status=status.HTTP_201_CREATED)
 
-
+@method_decorator(csrf_exempt, name="dispatch")
 class LoginView(APIView):
-    def post(self, request):
-        username = request.data.get('username')
-        password = request.data.get('password')
-        if not all([username, password]):
-            return Response({"error": "Username and password are required."}, status=status.HTTP_400_BAD_REQUEST)
-        user = authenticate(request, username=username, password=password)
-        if user is None:
-            return Response({"error": "Invalid username or password."}, status=status.HTTP_401_UNAUTHORIZED)
-        return Response({"message": "Login successful!", "user_id": user.id}, status=status.HTTP_200_OK)
-    
+    authentication_classes = []  # Disable session and token checks
+    permission_classes = []      # Allow anyone to call this API
 
-class logoutview(APIView):
     def post(self, request):
-        # Invalidate session or token here if using token-based auth
-        return Response({"message": "Logout successful!"}, status=status.HTTP_200_OK)    
+        username_or_email = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username_or_email or not password:
+            return Response({"error": "Username/Email and password are required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Allow login using either email or username
+        if "@" in username_or_email:
+            try:
+                user_obj = User.objects.get(email=username_or_email)
+                username = user_obj.username
+            except User.DoesNotExist:
+                return Response({"error": "No account found with this email."},
+                                status=status.HTTP_404_NOT_FOUND)
+        else:
+            username = username_or_email
+
+        user = authenticate(username=username, password=password)
+        if user is not None:
+            auth_login(request, user)
+            return Response({
+                "message": "Login successful",
+                "user_id": user.id,
+                "email": user.email,
+                "username": user.username
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Invalid credentials."},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LogoutView(APIView):
+    def get(self, request):
+        logout(request)
+        return redirect("/ui/login/") # Redirect to home page after logout
+
+    
 
 # ─────────────────────────────
 # Password reset via OTP
@@ -160,21 +221,38 @@ class ResetPasswordView(APIView):
 
 class UserProfileView(APIView):
     def get(self, request):
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            if request.user and request.user.is_authenticated:
-                user = request.user
-            else:
-                return Response({"error": "User ID is required or authenticate to get your profile."},
-                                status=status.HTTP_400_BAD_REQUEST)
-        else:
-            try:
-                user = User.objects.get(id=int(user_id))
-            except (User.DoesNotExist, ValueError, TypeError):
-                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        email = request.query_params.get("email")
+        user = User.objects.filter(email=email).first()
+        if not user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        data = {"username": user.username, "email": user.email}
-        return Response({"user_profile": data}, status=status.HTTP_200_OK)
+        data = {
+            "username": user.username,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "date_joined": user.date_joined,
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        email = request.data.get("email")
+        username = request.data.get("username")
+        first_name = request.data.get("first_name", "")
+        last_name = request.data.get("last_name", "")
+        user = User.objects.filter(email=email).first()
+
+        if not user:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if username:
+            user.username = username
+        user.first_name = first_name
+        user.last_name = last_name
+        user.save()
+
+        return Response({"message": "Profile updated successfully"}, status=status.HTTP_200_OK)
+
 
 
 class Deleteuserview(APIView):
@@ -192,47 +270,85 @@ class Deleteuserview(APIView):
 # ─────────────────────────────
 # Products
 # ─────────────────────────────
-class AddProductView(APIView):
+# class AddProductView(APIView):
+#     def post(self, request):
+#         name = request.data.get('name')
+#         price = request.data.get('price')
+#         description = request.data.get('description', "")
+#         category = request.data.get('category', "")
+#         stock = request.data.get('stock', 0)
+#         image = request.data.get('image', "")  # ✅ Accept image URL
+
+#         if not all([name, price]):
+#             return Response({"error": "name and price are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             price = Decimal(str(price))
+#             stock = int(stock)
+#         except (ValueError, TypeError):
+#             return Response({"error": "Invalid price or stock."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         product = Product.objects.create(
+#             name=name,
+#             price=price,
+#             description=description,
+#             category=category,
+#             stock=stock,
+#             image=image,  # ✅ Save image URL
+#             created_by=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
+#         )
+
+#         return Response({
+#             "message": "Product added successfully!",
+#             "product": {
+#                 "id": product.id,
+#                 "name": product.name,
+#                 "price": float(product.price),
+#                 "description": product.description,
+#                 "category": product.category,
+#                 "stock": product.stock,
+#                 "image": product.image,
+#             }
+#         }, status=status.HTTP_201_CREATED)
+class AddProductPageView(APIView):
     def post(self, request):
-        name = request.data.get('name')
-        price = request.data.get('price')
-        description = request.data.get('description', "")
-        category = request.data.get('category', "")
-        stock = request.data.get('stock', 0)
-        image = request.data.get('image', "")  # ✅ Accept image URL
+        name = request.data.get("name")
+        price = request.data.get("price")
+        description = request.data.get("description", "")
+        category = request.data.get("category", "")
+        image_url = request.data.get("image", "")
 
-        if not all([name, price]):
-            return Response({"error": "name and price are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            price = Decimal(str(price))
-            stock = int(stock)
-        except (ValueError, TypeError):
-            return Response({"error": "Invalid price or stock."}, status=status.HTTP_400_BAD_REQUEST)
+        if not all([name, price, image_url]):
+            return Response({"error": "Name, price, and image URL are required."}, status=400)
 
         product = Product.objects.create(
             name=name,
             price=price,
             description=description,
             category=category,
-            stock=stock,
-            image=image,  # ✅ Save image URL
-            created_by=request.user if getattr(request, "user", None) and request.user.is_authenticated else None,
+            image=image_url,  # <–– store URL here
+            created_by=request.user if request.user.is_authenticated else None
         )
 
-        return Response({
-            "message": "Product added successfully!",
-            "product": {
+        return Response({"message": f"{product.name} added successfully!"}, status=201)
+
+
+class ProductDetailView(APIView):
+    def get(self, request, pk):
+        try:
+            product = Product.objects.get(id=pk)
+            data = {
                 "id": product.id,
                 "name": product.name,
-                "price": float(product.price),
                 "description": product.description,
-                "category": product.category,
+                "price": product.price,
                 "stock": product.stock,
-                "image": product.image,
+                "category": product.category,
+                "image": product.image.url if product.image else None,
             }
-        }, status=status.HTTP_201_CREATED)
-
+            return Response(data, status=status.HTTP_200_OK)
+        except Product.DoesNotExist:
+            return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class EditProductView(APIView):
@@ -339,273 +455,334 @@ class ProductSearchView(APIView):
     
 class ProductListView(View):
     def get(self, request):
-        products = Product.objects.all().order_by("-created_at")
+        products = Product.objects.all().order_by("-id")
+        print("🧩 Products count:", products.count())  # Debug line — check console
         return render(request, "e-com/product_list.html", {"products": products})    
   
 
 # ─────────────────────────────
 # Cart
 # ─────────────────────────────
+# class UpdateCartView(APIView):
+#     def post(self, request):
+#         cart_id = request.data.get("cart_id")
+#         quantity = int(request.data.get("quantity", 1))
+#         try:
+#             cart_item = Cart.objects.get(id=cart_id)
+#             cart_item.quantity = quantity
+#             cart_item.save()
+#             return Response({"message": "Cart updated successfully"})
+#         except Cart.DoesNotExist:
+#             return Response({"error": "Cart item not found"}, status=404)
 
+# class RemoveCartItemView(APIView):
+#     def post(self, request):
+#         cart_id = request.data.get("cart_id")
+#         try:
+#             Cart.objects.get(id=cart_id).delete()
+#             return Response({"message": "Item removed successfully"})
+#         except Cart.DoesNotExist:
+#             return Response({"error": "Item not found"}, status=404)
+
+class ClearCartView(APIView):
+    def post(self, request):
+        user = request.user
+        Cart.objects.filter(user=user).delete()
+        return Response({"message": "Cart cleared successfully"})
+
+
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class Addproducttocartview(APIView):
     def post(self, request):
-        email = request.data.get('email')
-        product_id = request.data.get('product_id')
-        quantity = request.data.get('quantity', 1)
+        print("🚀 Add to Cart called")
 
-        if not all([email, product_id]):
-            return Response({"error": "Email and Product ID are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            product = Product.objects.get(id=int(product_id))
-        except (Product.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            qty = int(quantity)
-            if qty < 1: raise ValueError
-        except (ValueError, TypeError):
-            return Response({"error": "Invalid quantity."}, status=status.HTTP_400_BAD_REQUEST)
-
-        item, created = Cart.objects.get_or_create(user=user, product=product, defaults={"quantity": qty})
-        if not created:
-            item.quantity += qty
-            item.save()
-
-        return Response({"message": "Product added to cart.", "quantity": item.quantity}, status=status.HTTP_200_OK)
-
-
-class ViewCartView(APIView):
-    def get(self, request):
-        email = request.query_params.get('email')
-        if not email:
-            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        cart_items = Cart.objects.select_related("product").filter(user=user)
-        data = [{
-            "product_id": ci.product.id,
-            "item_name": ci.product.name,
-            "item_price": float(ci.product.price),
-            "quantity": ci.quantity,
-            "subtotal": float(ci.product.price * ci.quantity)
-        } for ci in cart_items]
-        total = sum(ci.product.price * ci.quantity for ci in cart_items)
-        return Response({"cart_items": data, "total_amount": float(total)}, status=status.HTTP_200_OK)
-    
-class Editcartview(APIView):
-    def patch(self, request):
-        email = request.data.get('email')
-        product_id = request.data.get('product_id')
-        quantity = request.data.get('quantity')
-
-        if not all([email, product_id, quantity]):
-            return Response({"error": "Email, Product ID, and Quantity are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            product = Product.objects.get(id=int(product_id))
-        except (Product.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            qty = int(quantity)
-            if qty < 1: raise ValueError
-        except (ValueError, TypeError):
-            return Response({"error": "Invalid quantity."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            item = Cart.objects.get(user=user, product=product)
-        except Cart.DoesNotExist:
-            return Response({"error": "Product not in cart."}, status=status.HTTP_404_NOT_FOUND)
-
-        item.quantity = qty
-        item.save()
-        return Response({"message": "Cart updated successfully.", "quantity": item.quantity}, status=status.HTTP_200_OK)
-
-
-class Deleteitemincartview(APIView):
-    def delete(self, request):
-        email = request.data.get('email')
-        product_id = request.data.get('product_id')
-
-        if not all([email, product_id]):
-            return Response({"error": "Email and Product ID are required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            product = Product.objects.get(id=int(product_id))
-        except (Product.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        try:
-            item = Cart.objects.get(user=user, product=product)
-        except Cart.DoesNotExist:
-            return Response({"error": "Product not in cart."}, status=status.HTTP_404_NOT_FOUND)
-
-        item.delete()
-        return Response({"message": "Product removed from cart successfully.", "product": product.name},
-                        status=status.HTTP_200_OK)
-
-# ─────────────────────────────
-# Orders & Payments (mock)
-# ─────────────────────────────
-
-class PlaceOrderView(APIView):
-    def post(self, request):
-        email = request.data.get('email')
-        address_id = request.data.get('address_id')  # optional – attach saved address
-
-        if not email:
-            return Response({"error": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        cart_items = list(Cart.objects.select_related("product").filter(user=user))
-        if not cart_items:
-            return Response({"error": "Cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # compute total, check stock
-        total = Decimal("0.00")
-        for ci in cart_items:
-            if ci.quantity > ci.product.stock:
-                return Response(
-                    {"error": f"Insufficient stock for {ci.product.name}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            total += ci.product.price * ci.quantity
-
-        shipping_addr = None
-        if address_id:
-            try:
-                shipping_addr = Address.objects.get(id=int(address_id), user=user)
-            except (Address.DoesNotExist, ValueError, TypeError):
-                return Response({"error": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        order = Order.objects.create(user=user, total_amount=total, status="Pending", shipping_address=shipping_addr)
-
-        for ci in cart_items:
-            OrderItem.objects.create(
-                order=order,
-                product=ci.product,
-                quantity=ci.quantity,
-                price_at_purchase=ci.product.price,
+        if not request.user.is_authenticated:
+            return Response(
+                {"error": "Please login before adding to cart."},
+                status=status.HTTP_401_UNAUTHORIZED
             )
-            # reduce stock
-            ci.product.stock -= ci.quantity
-            ci.product.save()
 
-        # clear cart
-        Cart.objects.filter(user=user).delete()
+        # ✅ FIXED JSON parsing
+        try:
+            # Handle both DRF and raw Django requests safely
+            if hasattr(request, "data") and request.data:
+                data = request.data
+            else:
+                raw_body = request.body.decode("utf-8").strip()
+                print("📦 Raw body:", raw_body)
+                data = json.loads(raw_body) if raw_body else {}
 
-        return Response({"message": "Order placed successfully.", "order_id": order.id,
-                         "total_amount": float(order.total_amount)}, status=status.HTTP_200_OK)
+            product_id = data.get("product_id")
+            print("🆔 Product ID received:", product_id)
+
+            if not product_id:
+                return Response({"error": "Product ID is missing."}, status=400)
+        except json.JSONDecodeError:
+            print("❌ JSON decode error")
+            return Response({"error": "Invalid JSON payload."}, status=400)
+        except Exception as e:
+            print("❌ Unknown parsing error:", e)
+            return Response({"error": "Invalid request format."}, status=400)
+
+        # ✅ Fetch product
+        product = Product.objects.filter(id=product_id).first()
+        if not product:
+            return Response({"error": "Product not found."}, status=404)
+
+        try:
+            # ✅ Create or update cart
+            cart_item, created = Cart.objects.get_or_create(
+                user=request.user,
+                product=product,
+                defaults={"quantity": 1, "name": product.name},
+            )
+            if not created:
+                cart_item.quantity += 1
+                cart_item.save()
+
+            print(f"✅ Added {product.name} (x{cart_item.quantity}) to {request.user.username}'s cart")
+
+            return Response(
+                {"message": f"{product.name} added to cart successfully!"},
+                status=200
+            )
+
+        except IntegrityError:
+            cart_item = Cart.objects.get(user=request.user, product=product)
+            cart_item.quantity += 1
+            cart_item.save()
+            return Response({"message": "Cart updated successfully."}, status=200)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
 
 
-class Orderlistview(APIView):
+
+@method_decorator(login_required, name="dispatch")
+class CartDataView(View):
     def get(self, request):
-        orders = Order.objects.select_related("user").all().order_by("-id")
-        order_data = [{
-            "order_id": o.id,
-            "user": o.user.username,
-            "total_amount": float(o.total_amount),
-            "status": o.status,
-            "created_at": o.created_at,
-        } for o in orders]
-        return Response({"orders": order_data}, status=status.HTTP_200_OK)
+        cart_items = Cart.objects.filter(user=request.user).select_related('product')
+        total_price = sum(item.product.price * item.quantity for item in cart_items)
+        context = {
+            "cart_items": cart_items,
+            "total_price": total_price,
+        }
+        return render(request, "e-com/cart.html", context)
 
 
-class Orderdetailview(APIView):
+@method_decorator(login_required, name="dispatch")
+class CartPageView(View):
+    def get(self, request):
+        if request.user.is_authenticated:
+            # Make sure to select_related to avoid N+1 queries
+            cart_items = Cart.objects.filter(user=request.user).select_related('product')
+            total_price = sum(item.product.price * item.quantity for item in cart_items)
+        else:
+            # Handle session-based cart for anonymous users
+            cart_items = []
+            total_price = 0
+        
+        context = {
+            'cart_items': cart_items,
+            'total_price': total_price
+        }
+        return render(request, 'e-com/cart.html', context)
+
+
+
+
+@method_decorator(login_required, name="dispatch")
+class UpdateCartView(APIView):
+    def post(self, request):
+        try:
+            cart_id = request.data.get("cart_id")
+            action = request.data.get("action")
+
+            cart_item = Cart.objects.filter(id=cart_id, user=request.user).first()
+            if not cart_item:
+                return Response({"error": "Cart item not found."}, status=404)
+
+            if action == "increase":
+                cart_item.quantity += 1
+            elif action == "decrease" and cart_item.quantity > 1:
+                cart_item.quantity -= 1
+            else:
+                return Response({"error": "Invalid action."}, status=400)
+
+            cart_item.save()
+            return Response({"message": "Quantity updated.", "new_quantity": cart_item.quantity})
+
+        except Exception as e:
+            print("Update Cart Error:", e)
+            return Response({"error": "Internal server error."}, status=500)
+
+
+# -----------------------
+# Remove Item from Cart
+# -----------------------
+@method_decorator(login_required, name="dispatch")
+class RemoveCartItemView(APIView):
+    def post(self, request):
+        try:
+            cart_id = request.data.get("cart_id")
+            cart_item = Cart.objects.filter(id=cart_id, user=request.user).first()
+            if not cart_item:
+                return Response({"error": "Cart item not found."}, status=404)
+
+            cart_item.delete()
+            return Response({"message": "Item removed from cart."}, status=200)
+        except Exception as e:
+            print("Remove Item Error:", e)
+            return Response({"error": "Internal server error."}, status=500)
+
+
+# -----------------------
+# Checkout (Create Order)
+# -----------------------
+@method_decorator(login_required, name="dispatch")
+class CheckoutView(APIView):
+    def post(self, request):
+        try:
+            user = request.user
+            cart_items = Cart.objects.filter(user=user)
+            if not cart_items.exists():
+                return Response({"error": "Your cart is empty."}, status=400)
+
+            total_price = sum(item.subtotal for item in cart_items)
+
+            # Create Order
+            order = Order.objects.create(user=user, total_price=total_price, status="Paid")
+
+            # Clear the cart after checkout
+            cart_items.delete()
+
+            return Response({"message": "Order placed successfully!", "order_id": order.id}, status=200)
+        except Exception as e:
+            print("Checkout Error:", e)
+            return Response({"error": "Internal server error."}, status=500)
+        
+
+
+@method_decorator(login_required, name="dispatch")
+class ViewOrdersAPI(View):
+    def get(self, request):
+        try:
+            user = request.user
+            print("📦 Fetching orders for:", user.username)
+
+            orders = Order.objects.filter(user=user).order_by("-created_at")
+            order_list = [
+                {
+                    "id": o.id,
+                    "created_at": o.created_at.strftime("%Y-%m-%d %H:%M"),
+                    "status": o.status,
+                    "total_price": float(o.total_price),
+                }
+                for o in orders
+            ]
+            return JsonResponse({"orders": order_list}, status=200)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({"error": str(e)}, status=500)  
+
+
+
+# class CheckoutView(APIView):
+#     def post(self, request):
+#         try:
+#             user = request.user if request.user.is_authenticated else None
+#             if not user:
+#                 return Response(
+#                     {"error": "User not authenticated"},
+#                     status=status.HTTP_401_UNAUTHORIZED
+#                 )
+
+#             cart_items = Cart.objects.filter(user=user)
+#             if not cart_items.exists():
+#                 return Response(
+#                     {"error": "Your cart is empty."},
+#                     status=status.HTTP_400_BAD_REQUEST
+#                 )
+
+#             total_price = sum(item.subtotal for item in cart_items)
+
+#             # ✅ Create an order record
+#             order = Order.objects.create(
+#                 user=user,
+#                 total_price=total_price,
+#                 status="Pending"
+#             )
+
+#             # Optionally clear the cart
+#             cart_items.delete()
+
+#             return Response(
+#                 {
+#                     "message": "Checkout successful!",
+#                     "order_id": order.id,
+#                     "total_price": total_price
+#                 },
+#                 status=status.HTTP_200_OK
+#             )
+
+#         except Exception as e:
+#             print("Checkout Error:", str(e))
+#             return Response(
+#                 {"error": "Something went wrong. Please try again."},
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
+
+
+
+class OrderDetailPageView(View):
+    def get(self, request):
+        return render(request, "e-com/order_detail.html")
+
+
+
+@method_decorator(login_required, name="dispatch")
+class ViewOrderDetailAPI(View):
     def get(self, request, order_id):
         try:
-            order = Order.objects.get(id=int(order_id))
-        except (Order.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+            order = (
+                Order.objects.filter(id=order_id, user=request.user)
+                .select_related("user")
+                .prefetch_related("items__product")
+                .first()
+            )
 
-        items = order.items.select_related("product").all()
-        items_data = [{
-            "product_name": it.product.name,
-            "quantity": it.quantity,
-            "price": float(it.price_at_purchase),
-            "subtotal": float(it.subtotal),
-        } for it in items]
+            if not order:
+                return JsonResponse({"error": "Order not found"}, status=404)
 
-        addr = order.shipping_address
-        address_data = None
-        if addr:
-            address_data = {
-                "street": addr.street, "city": addr.city, "state": addr.state, "zip_code": addr.zip_code
+            items = [
+                {
+                    "name": item.product.name,
+                    "price": float(item.product.price),
+                    "quantity": item.quantity,
+                    "subtotal": float(item.product.price * item.quantity),
+                }
+                for item in order.items.all()
+            ]
+
+            data = {
+                "id": order.id,
+                "created_at": order.created_at.strftime("%Y-%m-%d %H:%M"),
+                "status": order.status,
+                "total_price": float(order.total_price),
+                "items": items,
             }
 
-        order_data = {
-            "order_id": order.id,
-            "user": order.user.username,
-            "total_amount": float(order.total_amount),
-            "status": order.status,
-            "created_at": order.created_at,
-            "shipping_address": address_data,
-            "items": items_data,
-        }
-        return Response({"order": order_data}, status=status.HTTP_200_OK)
+            return JsonResponse(data, status=200)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({"error": str(e)}, status=500)
 
 
-class Paymentinitiateview(APIView):
-    def post(self, request):
-        order_id = request.data.get('order_id')
-        if not order_id:
-            return Response({"error": "Order ID is required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            order = Order.objects.get(id=int(order_id))
-        except (Order.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-        # integrate real gateway here
-        return Response({"message": "Payment initiated successfully.",
-                         "order_id": order.id, "amount": float(order.total_amount)}, status=status.HTTP_200_OK)
-
-
-class Paymentconfirmview(APIView):
-    def post(self, request):
-        order_id = request.data.get('order_id')
-        payment_status = request.data.get('payment_status')
-        if not all([order_id, payment_status]):
-            return Response({"error": "Order ID and Payment Status are required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            order = Order.objects.get(id=int(order_id))
-        except (Order.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        if payment_status == "success":
-            order.status = "Paid"
-            order.save()
-            return Response({"message": "Payment confirmed successfully."}, status=status.HTTP_200_OK)
-        return Response({"error": "Payment failed."}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class paymentstatusview(APIView):
-    def get(self, request, order_id):
-        try:
-            order = Order.objects.get(id=int(order_id))
-        except (Order.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response({"order_id": order.id, "status": order.status,
-                         "total_amount": float(order.total_amount)}, status=status.HTTP_200_OK)
 
 # ─────────────────────────────
 # Addresses (user address book)
@@ -690,46 +867,6 @@ class AddressListView(APIView):
         return Response({"addresses": data}, status=status.HTTP_200_OK)
 
 # ─────────────────────────────
-# Coupons (demo)
-# ─────────────────────────────
-
-class CouponApplyView(APIView):
-    def post(self, request):
-        product_id = request.data.get('product_id')
-        coupon_code = request.data.get('coupon_code')
-        if not all([product_id, coupon_code]):
-            return Response({"error": "Product ID and Coupon Code are required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            product = Product.objects.get(id=int(product_id))
-        except (Product.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        discount_percentage = 10  # demo only
-        discounted_price = product.price * Decimal(1 - discount_percentage / 100)
-        return Response({
-            "message": "Coupon applied successfully.",
-            "product_id": product.id,
-            "original_price": float(product.price),
-            "discounted_price": float(discounted_price)
-        }, status=status.HTTP_200_OK)
-
-
-class CouponRemoveView(APIView):
-    def post(self, request):
-        product_id = request.data.get('product_id')
-        if not product_id:
-            return Response({"error": "Product ID is required."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            product = Product.objects.get(id=int(product_id))
-        except (Product.DoesNotExist, ValueError, TypeError):
-            return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response({
-            "message": "Coupon removed successfully.",
-            "product_id": product.id,
-            "original_price": float(product.price)
-        }, status=status.HTTP_200_OK)
-
-# ─────────────────────────────
 # Notifications
 # ─────────────────────────────
 
@@ -773,8 +910,8 @@ class AddProductPageView(TemplateView):
 class ProductListPageView(TemplateView):
     template_name = "e-com/product_list.html"
 
-class CartPageView(TemplateView):
-    template_name = "e-com/cart.html"
+# class CartPageView(TemplateView):
+#     template_name = "e-com/cart.html"
 
 class OrdersPageView(TemplateView):
     template_name = "e-com/orders.html"

@@ -1,45 +1,163 @@
-{% extends "e-com/base.html" %}
-{% block title %}Login | NK Mart{% endblock %}
-
+{% extends 'e-com/base.html' %}
 {% block content %}
-<div class="login-container">
-  <div class="login-card">
-    <h2 class="login-title">Welcome Back 👋</h2>
-    <p class="login-subtitle">Login to your NK Mart account</p>
+<style>
+body {
+    background: #f8f9ff;
+    font-family: 'Poppins', sans-serif;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
 
-    <form id="loginForm" class="login-form">
-      <input type="text" id="username" placeholder="Enter your username" required />
-      <input type="password" id="password" placeholder="Enter your password" required />
-      <button type="submit">Login</button>
-    </form>
+.login-box {
+    background: white;
+    border-radius: 20px;
+    padding: 40px;
+    width: 380px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    text-align: center;
+    transition: 0.3s;
+}
 
-    <div class="login-links">
-      <a href="/ui/forget_password/">Forgot Password?</a>
-      <span> | </span>
-      <a href="/ui/register/">Create Account</a>
-    </div>
-  </div>
+.login-box:hover {
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+}
+
+.login-box h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2a2a2a;
+    margin-bottom: 8px;
+}
+
+.login-box h1 span {
+    color: #007bff;
+}
+
+.login-box h2 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #666;
+    margin-bottom: 25px;
+}
+
+.login-box input {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    margin: 10px 0;
+    background: #f9f9f9;
+    color: #333;
+    font-size: 15px;
+    transition: 0.3s;
+}
+
+.login-box input:focus {
+    outline: none;
+    border: 1px solid #007bff;
+    background: #fff;
+    box-shadow: 0 0 6px rgba(0, 123, 255, 0.3);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    background: linear-gradient(90deg, #007bff, #00b4d8);
+    color: white;
+    font-weight: 600;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: 0.3s;
+}
+
+.login-btn:hover {
+    background: linear-gradient(90deg, #0056b3, #0096c7);
+    transform: translateY(-2px);
+}
+
+a {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 14px;
+    display: block;
+    margin-top: 10px;
+    transition: 0.3s;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+#errorMsg {
+    color: #e63946;
+    margin-top: 10px;
+    font-size: 14px;
+}
+
+/* Hide navbar/footer for login page */
+header, nav, footer {
+    display: none !important;
+}
+</style>
+
+<div class="login-box">
+    <h1><span>NK</span> Mart 🛍️</h1>
+    <h2>Welcome Back 👋</h2>
+
+    <input type="text" id="username" placeholder="Enter your username" required>
+    <input type="password" id="password" placeholder="Enter your password" required>
+
+    <button class="login-btn" onclick="handleLogin()">Login</button>
+
+    <p id="errorMsg"></p>
+
+    <a href="/ui/forget_password/">Forgot Password?</a>
+    <a href="/ui/register/">Create Account</a>
 </div>
 
 <script>
-document.getElementById("loginForm").addEventListener("submit", async function (e) {
-  e.preventDefault();
-  const username = document.getElementById("username").value;
-  const password = document.getElementById("password").value;
+async function handleLogin() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const errorMsg = document.getElementById("errorMsg");
+    errorMsg.textContent = "";
 
-  const res = await fetch("/api/login/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
+    if (!username || !password) {
+        errorMsg.textContent = "Please fill in both fields.";
+        return;
+    }
 
-  const data = await res.json();
-  if (res.ok) {
-    alert("✅ Login successful!");
-    window.location.href = "/ui/product_list/";
-  } else {
-    alert("❌ " + (data.error || "Invalid credentials"));
-  }
-});
+    try {
+        const response = await fetch("/api/login/", {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            credentials: "same-origin",
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.message === "Login successful") {
+            localStorage.setItem("username", data.username);
+            localStorage.setItem("userEmail", data.email);
+            localStorage.setItem("userId", data.user_id);
+            window.location.href = "/ui/product_list/";
+        } else {
+            errorMsg.textContent = data.error || "Invalid credentials.";
+        }
+    } catch (error) {
+        errorMsg.textContent = "Something went wrong. Please try again later.";
+        console.error(error);
+    }
+}
 </script>
 {% endblock %}

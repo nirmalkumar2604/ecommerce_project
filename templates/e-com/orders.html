@@ -1,45 +1,176 @@
 {% extends "e-com/base.html" %}
-{% block title %}My Orders | NK Mart{% endblock %}
-
+{% block title %}Orders - NK Mart{% endblock %}
 {% block content %}
-<div class="orders-container">
-  <h2 class="section-title">📦 My Orders</h2>
-  <div id="orderList" class="order-list"></div>
+
+<div class="orders-wrapper">
+  <h2>Your Orders</h2>
+  <div id="orderList"></div>
 </div>
+
+<!-- Order Details Popup -->
+<div id="orderPopup" class="order-popup hidden">
+  <div class="order-popup-content">
+    <span class="close-btn" onclick="closePopup()">&times;</span>
+    <h3>Order Details</h3>
+    <div id="popupBody"></div>
+  </div>
+</div>
+
+<style>
+/* ===== Layout ===== */
+.orders-wrapper {
+  color: #fff;
+  margin: 40px auto;
+  max-width: 800px;
+  padding: 20px;
+}
+
+.order-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 20px;
+  margin: 20px 0;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.order-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ===== Popup Styles ===== */
+.order-popup {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 1000;
+}
+
+.order-popup-content {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: 25px;
+  width: 90%; max-width: 550px;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.3s ease;
+  overflow-y: auto;
+  max-height: 85vh;
+}
+
+.close-btn {
+  float: right;
+  font-size: 24px;
+  cursor: pointer;
+  color: #f66;
+}
+
+.hidden { display: none; }
+
+.order-popup-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.order-popup-content th, .order-popup-content td {
+  text-align: left;
+  padding: 8px;
+}
+
+.order-popup-content tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+</style>
 
 <script>
 async function loadOrders() {
-  const email = prompt("Enter your registered email:");
-  if (!email) return alert("❌ Email is required to view your orders.");
-
-  const res = await fetch(`/api/view_orders/?email=${email}`);
-  const data = await res.json();
-
   const container = document.getElementById("orderList");
-  container.innerHTML = "";
+  container.innerHTML = "<p>Loading your orders...</p>";
 
-  if (res.ok && data.orders && data.orders.length > 0) {
-    data.orders.forEach((order) => {
-      const div = document.createElement("div");
-      div.classList.add("order-card");
-      div.innerHTML = `
-        <h3>Order #${order.id}</h3>
-        <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString()}</p>
-        <p><strong>Status:</strong> ${order.status}</p>
-        <p><strong>Total:</strong> ₹${order.total_price}</p>
-        <button onclick="viewOrder('${order.id}')">View Details</button>
-      `;
-      container.appendChild(div);
-    });
-  } else {
-    container.innerHTML = "<p class='no-products'>No orders found.</p>";
+  try {
+    const res = await fetch("/api/view_orders/", { credentials: "include" });
+    const data = await res.json();
+
+    if (res.ok && data.orders && data.orders.length > 0) {
+      container.innerHTML = "";
+      data.orders.forEach(order => {
+        const div = document.createElement("div");
+        div.classList.add("order-card");
+        div.innerHTML = `
+          <h3>Order #${order.id}</h3>
+          <p><strong>Date:</strong> ${order.created_at}</p>
+          <p><strong>Status:</strong> ${order.status}</p>
+          <p><strong>Total:</strong> ₹${order.total_price}</p>
+          <button class="btn-view" onclick="viewOrder(${order.id})">View Details</button>
+        `;
+        container.appendChild(div);
+      });
+    } else {
+      container.innerHTML = "<p>No orders found.</p>";
+    }
+  } catch (error) {
+    console.error("Error loading orders:", error);
+    container.innerHTML = "<p>Failed to load orders.</p>";
   }
 }
 
-function viewOrder(id) {
-  window.location.href = `/ui/order_detail/?id=${id}`;
+async function viewOrder(orderId) {
+  try {
+    const res = await fetch(`/api/view_order_detail/${orderId}/`, {
+      method: "GET",
+      credentials: "include",
+    });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || "Failed to load details");
+
+    const popupBody = document.getElementById("popupBody");
+    popupBody.innerHTML = `
+      <p><strong>Order #${data.id}</strong></p>
+      <p><strong>Date:</strong> ${data.created_at}</p>
+      <p><strong>Status:</strong> ${data.status}</p>
+      <p><strong>Total:</strong> ₹${data.total_price}</p>
+      <hr>
+      <table>
+        <thead>
+          <tr><th>Product</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr>
+        </thead>
+        <tbody>
+          ${data.items.map(i => `
+            <tr>
+              <td>${i.name}</td>
+              <td>${i.quantity}</td>
+              <td>₹${i.price}</td>
+              <td>₹${i.subtotal}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    `;
+
+    document.getElementById("orderPopup").classList.remove("hidden");
+  } catch (err) {
+    console.error("Error loading order details:", err);
+    alert("Unable to load order details.");
+  }
+}
+
+function closePopup() {
+  document.getElementById("orderPopup").classList.add("hidden");
 }
 
 loadOrders();
 </script>
+
 {% endblock %}

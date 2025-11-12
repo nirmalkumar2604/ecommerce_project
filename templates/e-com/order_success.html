@@ -1,0 +1,32 @@
+{% extends "e-com/base.html" %}
+{% block title %}Order Success - NK Mart{% endblock %}
+{% block content %}
+<div style="max-width:720px; margin:30px auto; text-align:center">
+  <div style="background:var(--glass); padding:28px; border-radius:12px; box-shadow:var(--card-shadow)">
+    <h2>✅ Order Placed Successfully!</h2>
+    <p class="muted">Your order #{{ order_id }} is confirmed. We'll email you updates.</p>
+    <a class="cta" href="/ui/orders/">View Orders</a>
+  </div>
+</div>
+{% endblock %}
+
+
+<style>
+.success-container {
+  text-align: center;
+  padding: 60px;
+  color: white;
+}
+button {
+  background: #00c851;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button:hover {
+  background: #007e33;
+}
+</style>
+{% endblock %}

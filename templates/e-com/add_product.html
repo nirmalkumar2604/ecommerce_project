@@ -1,61 +1,118 @@
 {% extends "e-com/base.html" %}
-{% block title %}Add Product | NK Mart{% endblock %}
+{% block title %}Add Product - NK Mart{% endblock %}
 
 {% block content %}
-<div class="login-container">
-  <div class="login-card" style="max-width: 600px;">
-    <h2 class="login-title">Add New Product 🛍️</h2>
-    <p class="login-subtitle">Fill out the details below to list your product.</p>
+<div class="form-container">
+  <h2>Add New Product</h2>
+  <form id="addProductForm" method="POST">
+    {% csrf_token %}
+    <input type="text" name="name" placeholder="Product name" required>
+    <input type="number" name="price" step="0.01" placeholder="Price" required>
+    <textarea name="description" placeholder="Short description"></textarea>
+    <input type="text" name="category" placeholder="Category (optional)">
+    <input type="url" name="image" placeholder="Image URL" required>
 
-    <form id="addProductForm" class="login-form">
-      <input type="text" id="product_name" placeholder="Product Name" required />
-      <input type="text" id="description" placeholder="Product Description" />
-      <input type="number" id="price" placeholder="Price (₹)" required />
-      <input type="number" id="stock" placeholder="Available Stock" value="0" />
-      <input type="url" id="image_url" placeholder="Image URL (optional)" />
-
-      <button type="submit">Add Product</button>
-    </form>
-
-    <div class="login-links">
-      <a href="/ui/product_list/">← Back to Product List</a>
-    </div>
-  </div>
+    <button type="submit" class="submit-btn">Add Product</button>
+  </form>
 </div>
 
 <script>
-document.getElementById("addProductForm").addEventListener("submit", async function (e) {
+document.getElementById("addProductForm").addEventListener("submit", async function(e) {
   e.preventDefault();
 
-  const name = document.getElementById("product_name").value.trim();
-  const description = document.getElementById("description").value.trim();
-  const price = document.getElementById("price").value.trim();
-  const stock = document.getElementById("stock").value.trim() || 0;
-  const image = document.getElementById("image_url").value.trim();
+  const formData = {
+    name: this.name.value.trim(),
+    price: this.price.value.trim(),
+    description: this.description.value.trim(),
+    category: this.category.value.trim(),
+    image: this.image.value.trim()
+  };
 
-  if (!name || !price) {
-    alert("❌ Product name and price are required.");
+  if (!formData.name || !formData.price || !formData.image) {
+    alert("❌ Please fill all required fields.");
     return;
   }
 
   try {
     const res = await fetch("/api/add_product/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, price, stock, image }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken")
+      },
+      credentials: "include",
+      body: JSON.stringify(formData)
     });
 
     const data = await res.json();
 
     if (res.ok) {
       alert("✅ Product added successfully!");
+      this.reset();
       window.location.href = "/ui/product_list/";
     } else {
       alert("❌ " + (data.error || "Failed to add product"));
     }
-  } catch (err) {
-    alert("⚠️ Network error, please try again.");
+  } catch (error) {
+    alert("⚠️ Network error. Please try again.");
   }
 });
+
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== "") {
+    const cookies = document.cookie.split(";");
+    for (let cookie of cookies) {
+      cookie = cookie.trim();
+      if (cookie.startsWith(name + "=")) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
 </script>
+
+<style>
+.form-container {
+  width: 400px;
+  margin: 60px auto;
+  background: #1a1a1a;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(255, 255, 255, 0.1);
+  color: white;
+  text-align: center;
+}
+
+.form-container h2 {
+  margin-bottom: 20px;
+}
+
+.form-container input,
+.form-container textarea {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border: none;
+  border-radius: 8px;
+  background: #333;
+  color: white;
+}
+
+.submit-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.submit-btn:hover {
+  background: #0056b3;
+}
+</style>
 {% endblock %}

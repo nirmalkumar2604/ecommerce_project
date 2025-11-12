@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: nk-mart
+    env: python
+    plan: free
+    buildCommand: >
+      pip install -r requirements.txt &&
+      python manage.py collectstatic --noinput &&
+      python manage.py migrate
+    startCommand: gunicorn ecommerce.wsgi:application
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: ecommerce.settings
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: False
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: nk-mart-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: nk-mart-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: nk-mart-db
+          property: password
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: nk-mart-db
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: nk-mart-db
+          property: port
+
+databases:
+  - name: nk-mart-db
+    plan: free
