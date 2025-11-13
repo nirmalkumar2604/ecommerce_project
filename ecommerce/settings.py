@@ -64,11 +64,11 @@ WSGI_APPLICATION = "ecommerce.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", default=os.getenv("POSTGRES_DB", "ecommerce_db")),
-        "USER": env("POSTGRES_USER", default=os.getenv("POSTGRES_USER", "postgres")),
-        "PASSWORD": env("POSTGRES_PASSWORD", default=os.getenv("POSTGRES_PASSWORD", "Denim@2926")),
-        "HOST": env("POSTGRES_HOST", default=os.getenv("POSTGRES_HOST", "localhost")),
-        "PORT": env("POSTGRES_PORT", default=os.getenv("POSTGRES_PORT", "5432")),
+        "NAME": env("POSTGRES_DB", default="ecommerce_db"),
+        "USER": env("POSTGRES_USER", default="postgres"),
+        "PASSWORD": env("POSTGRES_PASSWORD", default="Denim@2926"),
+        "HOST": env("POSTGRES_HOST", default="localhost"),
+        "PORT": env("POSTGRES_PORT", default="5432"),
     }
 }
 
