@@ -36,7 +36,22 @@ INSTALLED_APPS = [
     # Third-party
     "rest_framework",
     "django.contrib.humanize",
+    "corsheaders",
 ]
+
+# ----------------------------------
+# CORS & CSRF SETTINGS (REQUIRED)
+# ----------------------------------
+
+CORS_ALLOWED_ORIGINS = [
+    "https://ecommerce-project-dv4h.onrender.com",   # your frontend URL
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://ecommerce-project-dv4h.onrender.com",
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 # ----------------------------------
 # MIDDLEWARE
@@ -44,6 +59,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",  # ✅ Required for Render
+    "corsheaders.middleware.CorsMiddleware", 
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

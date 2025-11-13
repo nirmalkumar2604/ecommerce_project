@@ -34,7 +34,7 @@ document.getElementById("addProductForm").addEventListener("submit", async funct
   }
 
   try {
-    const res = await fetch("/api/add_product/", {
+    const res = await fetch("https://ecommerce-project-dv4h.onrender.com/api/add_product/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
